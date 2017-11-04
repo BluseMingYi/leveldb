@@ -33,6 +33,8 @@ Writer::Writer(WritableFile* dest, uint64_t dest_length)
 Writer::~Writer() {
 }
 
+//  ring buffer sample
+
 Status Writer::AddRecord(const Slice& slice) {
   const char* ptr = slice.data();
   size_t left = slice.size();
@@ -67,7 +69,7 @@ Status Writer::AddRecord(const Slice& slice) {
       type = kFullType;
     } else if (begin) {
       type = kFirstType;
-    } else if (end) {
+    } else if (end) { //begin == false
       type = kLastType;
     } else {
       type = kMiddleType;

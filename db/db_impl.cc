@@ -1210,10 +1210,15 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
   Status status = MakeRoomForWrite(my_batch == NULL);
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
-  if (status.ok() && my_batch != NULL) {  // NULL batch is for compactions
+  if (status.ok() && my_batch != NULL) {
+	// NULL batch is for compactions
     WriteBatch* updates = BuildBatchGroup(&last_writer);
+    // flush writer's dequeue
+
     WriteBatchInternal::SetSequence(updates, last_sequence + 1);
     last_sequence += WriteBatchInternal::Count(updates);
+
+    // -- a nice choice  last_sequence from +=  not last_sequence + 1 --
 
     // Add to log and apply to memtable.  We can release the lock
     // during this phase since &w is currently responsible for logging
@@ -1221,6 +1226,9 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
     // into mem_.
     {
       mutex_.Unlock();
+
+      //  log first why ?
+
       status = log_->AddRecord(WriteBatchInternal::Contents(updates));
       bool sync_error = false;
       if (status.ok() && options.sync) {
@@ -1229,9 +1237,11 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
           sync_error = true;
         }
       }
+
       if (status.ok()) {
         status = WriteBatchInternal::InsertInto(updates, mem_);
       }
+
       mutex_.Lock();
       if (sync_error) {
         // The state of the log file is indeterminate: the log record we
@@ -1247,6 +1257,8 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
 
   while (true) {
     Writer* ready = writers_.front();
+    // note when to remove
+    //  what's happened in writers_ dequeue
     writers_.pop_front();
     if (ready != &w) {
       ready->status = status;
@@ -1283,8 +1295,14 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
   }
 
   *last_writer = first;
+  //*last_writer -> Writer w(&mutex_);
+  // why use first replace it and keep the first
+
   std::deque<Writer*>::iterator iter = writers_.begin();
   ++iter;  // Advance past "first"
+  // finally  I get the scan dequeue
+
+
   for (; iter != writers_.end(); ++iter) {
     Writer* w = *iter;
     if (w->sync && !first->sync) {
@@ -1292,6 +1310,9 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
       break;
     }
 
+//    w->sync == false || first->sync == true
+
+    // why batch maybe NULL
     if (w->batch != NULL) {
       size += WriteBatchInternal::ByteSize(w->batch);
       if (size > max_size) {
@@ -1310,6 +1331,7 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
     }
     *last_writer = w;
   }
+
   return result;
 }
 
